@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Hello Neighbor Levels</title>
+  <title>Hello Neighbor - 2 Player</title>
   <style>
     body { margin: 0; overflow: hidden; background: #111; }
     canvas { display: block; margin: auto; background: #84b6f4; }
@@ -11,122 +11,185 @@
 <body>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
 <script>
+// Setup
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
-
 const keys = {};
-document.addEventListener("keydown", (e) => keys[e.key] = true);
-document.addEventListener("keyup", (e) => keys[e.key] = false);
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
 
-const player = {
-  x: 100, y: 100,
-  width: 40, height: 40,
-  color: "orange",
-  vx: 0, vy: 0,
-  onGround: false
-};
+// Sounds
+const jumpSound = new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_918b521f7d.mp3");
+const keySound = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_2d922da94d.mp3");
+const hitSound = new Audio("https://cdn.pixabay.com/audio/2022/03/10/audio_3f1d13dccc.mp3");
 
-const gravity = 0.8;
-const friction = 0.8;
-const moveSpeed = 4;
-const jumpForce = -14;
+// Player Constructor
+function createPlayer(x, y, color, controls) {
+  return {
+    x, y,
+    width: 40, height: 40,
+    color,
+    vx: 0, vy: 0,
+    onGround: false,
+    health: 3,
+    hasKey: false,
+    controls
+  };
+}
+
+const player1 = createPlayer(100, 100, "orange", {
+  left: "a", right: "d", up: "w"
+});
+const player2 = createPlayer(140, 100, "lime", {
+  left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp"
+});
+
+const gravity = 0.8, friction = 0.8, speed = 4, jump = -14;
 
 let level = 0;
 const levels = [
-  // Level 1
-  [
-    { x: 0, y: 580, width: 800, height: 20 },
-    { x: 150, y: 500, width: 120, height: 20 },
-    { x: 300, y: 420, width: 120, height: 20 },
-    { x: 450, y: 340, width: 120, height: 20 },
-    { x: 600, y: 260, width: 120, height: 20 },
-  ],
-  // Level 2
-  [
-    { x: 0, y: 580, width: 800, height: 20 },
-    { x: 100, y: 480, width: 100, height: 20 },
-    { x: 250, y: 380, width: 100, height: 20 },
-    { x: 400, y: 280, width: 100, height: 20 },
-    { x: 550, y: 180, width: 100, height: 20 },
-    { x: 700, y: 100, width: 100, height: 20 },
-  ],
-  // Level 3
-  [
-    { x: 0, y: 580, width: 800, height: 20 },
-    { x: 180, y: 500, width: 100, height: 20 },
-    { x: 180, y: 400, width: 100, height: 20 },
-    { x: 180, y: 300, width: 100, height: 20 },
-    { x: 320, y: 300, width: 100, height: 20 },
-    { x: 460, y: 300, width: 100, height: 20 },
-    { x: 600, y: 300, width: 100, height: 20 },
-  ],
+  {
+    platforms: [
+      { x: 0, y: 580, width: 800, height: 20 },
+      { x: 150, y: 500, width: 120, height: 20 },
+      { x: 300, y: 420, width: 120, height: 20 },
+      { x: 450, y: 340, width: 120, height: 20 },
+      { x: 600, y: 260, width: 120, height: 20 },
+    ],
+    key: { x: 620, y: 230, width: 20, height: 20, collected: false },
+    door: { x: 760, y: 560, width: 30, height: 20, locked: true },
+    goal: { x: 780, y: 520, width: 20, height: 60 }
+  },
+  {
+    platforms: [
+      { x: 0, y: 580, width: 800, height: 20 },
+      { x: 100, y: 480, width: 100, height: 20 },
+      { x: 250, y: 380, width: 100, height: 20 },
+      { x: 400, y: 280, width: 100, height: 20 },
+      { x: 550, y: 180, width: 100, height: 20 },
+      { x: 700, y: 100, width: 100, height: 20 },
+    ],
+    key: { x: 720, y: 70, width: 20, height: 20, collected: false },
+    door: { x: 760, y: 560, width: 30, height: 20, locked: true },
+    goal: { x: 780, y: 520, width: 20, height: 60 }
+  }
 ];
 
-function drawRect(obj) {
-  ctx.fillStyle = obj.color || "white";
+const neighbor = { x: 700, y: 500, width: 40, height: 40, color: "red", speed: 1.2 };
+
+function draw(obj, color) {
+  ctx.fillStyle = color || obj.color || "white";
   ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
 }
 
-function update() {
-  if (keys["ArrowLeft"] || keys["a"]) player.vx = -moveSpeed;
-  else if (keys["ArrowRight"] || keys["d"]) player.vx = moveSpeed;
-  else player.vx *= friction;
+function applyPhysics(p, platforms) {
+  if (keys[p.controls.left]) p.vx = -speed;
+  else if (keys[p.controls.right]) p.vx = speed;
+  else p.vx *= friction;
 
-  if ((keys["ArrowUp"] || keys["w"] || keys[" "]) && player.onGround) {
-    player.vy = jumpForce;
-    player.onGround = false;
+  if ((keys[p.controls.up]) && p.onGround) {
+    p.vy = jump;
+    p.onGround = false;
+    jumpSound.play();
   }
 
-  player.vy += gravity;
-  player.x += player.vx;
-  player.y += player.vy;
+  p.vy += gravity;
+  p.x += p.vx;
+  p.y += p.vy;
 
-  const platforms = levels[level];
-  player.onGround = false;
-
-  for (let p of platforms) {
-    if (player.x < p.x + p.width &&
-        player.x + player.width > p.x &&
-        player.y < p.y + p.height &&
-        player.y + player.height > p.y) {
-      if (player.vy > 0 && player.y + player.height - player.vy <= p.y) {
-        player.y = p.y - player.height;
-        player.vy = 0;
-        player.onGround = true;
+  p.onGround = false;
+  for (let plat of platforms) {
+    if (p.x < plat.x + plat.width &&
+        p.x + p.width > plat.x &&
+        p.y < plat.y + plat.height &&
+        p.y + p.height > plat.y) {
+      if (p.vy > 0 && p.y + p.height - p.vy <= plat.y) {
+        p.y = plat.y - p.height;
+        p.vy = 0;
+        p.onGround = true;
       }
     }
   }
 
-  // Level complete: reach right side
-  if (player.x > canvas.width) {
-    level++;
-    if (level >= levels.length) level = 0;
-    player.x = 100;
-    player.y = 100;
-    player.vx = 0;
-    player.vy = 0;
+  // Death reset
+  if (p.y > canvas.height) {
+    p.x = 100; p.y = 100; p.vx = p.vy = 0;
+    p.health -= 1;
+    hitSound.play();
+  }
+}
+
+function checkCollision(a, b) {
+  return a.x < b.x + b.width &&
+         a.x + a.width > b.x &&
+         a.y < b.y + b.height &&
+         a.y + a.height > b.y;
+}
+
+function update() {
+  const lvl = levels[level];
+  const plats = lvl.platforms;
+
+  [player1, player2].forEach(p => applyPhysics(p, plats));
+
+  // Key collect
+  [player1, player2].forEach(p => {
+    if (!lvl.key.collected && checkCollision(p, lvl.key)) {
+      lvl.key.collected = true;
+      p.hasKey = true;
+      keySound.play();
+    }
+  });
+
+  // Unlock door
+  if (lvl.key.collected) lvl.door.locked = false;
+
+  // Check goal
+  if (checkCollision(player1, lvl.goal) && checkCollision(player2, lvl.goal)) {
+    level = (level + 1) % levels.length;
+    resetLevel();
   }
 
-  // Fall reset
-  if (player.y > canvas.height) {
-    player.x = 100;
-    player.y = 100;
-    player.vx = 0;
-    player.vy = 0;
+  // Neighbor chase player1
+  const target = player1;
+  if (neighbor.x < target.x) neighbor.x += neighbor.speed;
+  if (neighbor.x > target.x) neighbor.x -= neighbor.speed;
+  if (neighbor.y < target.y) neighbor.y += neighbor.speed;
+  if (neighbor.y > target.y) neighbor.y -= neighbor.speed;
+
+  if (checkCollision(neighbor, player1)) {
+    player1.health -= 1;
+    hitSound.play();
+    player1.x = 100; player1.y = 100;
   }
+}
+
+function resetLevel() {
+  player1.x = 100; player1.y = 100; player1.hasKey = false;
+  player2.x = 140; player2.y = 100; player2.hasKey = false;
+  levels[level].key.collected = false;
+  levels[level].door.locked = true;
 }
 
 function render() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawRect({ ...player });
+  const lvl = levels[level];
 
-  for (let p of levels[level]) {
-    drawRect({ ...p, color: "#333" });
-  }
+  // Draw
+  lvl.platforms.forEach(p => draw(p, "#333"));
+  if (!lvl.key.collected) draw(lvl.key, "gold");
+  draw(lvl.door, lvl.door.locked ? "brown" : "green");
+  draw(lvl.goal, "white");
+
+  draw(player1);
+  draw(player2);
+  draw(neighbor);
 
   ctx.fillStyle = "white";
-  ctx.font = "20px Arial";
-  ctx.fillText("Level " + (level + 1), 20, 30);
+  ctx.font = "18px Arial";
+  ctx.fillText(`Level ${level + 1}`, 20, 30);
+  ctx.fillText(`P1 Health: ${player1.health}`, 20, 60);
+  ctx.fillText(`P2 Health: ${player2.health}`, 20, 80);
 }
 
 function gameLoop() {
@@ -134,9 +197,7 @@ function gameLoop() {
   render();
   requestAnimationFrame(gameLoop);
 }
-
 gameLoop();
 </script>
 </body>
 </html>
-
