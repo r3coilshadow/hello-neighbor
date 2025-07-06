@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Hello Neighbor - 2 Player (Finish Top-Right + Restart)</title>
+  <title>Hello Neighbor - 2 Player (Wider Door Fix)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #111; }
     canvas { display: block; margin: auto; background: #84b6f4; cursor: default; }
@@ -70,8 +70,7 @@ const levels = [
       { x: 600, y: 260, width: 120, height: 20 },
     ],
     key: { x: 620, y: 230, width: 20, height: 20, collected: false },
-    door: { x: 760, y: 560, width: 30, height: 20, locked: true },
-    // Finish line: top right corner, just above the last platform
+    door: { x: 700, y: 560, width: 100, height: 20, locked: true },  // wider door here
     goal: { x: 770, y: 220, width: 20, height: 40 }
   },
 ];
@@ -90,7 +89,7 @@ function checkCollision(a, b) {
          a.y + a.height > b.y;
 }
 
-function applyPhysics(p, platforms) {
+function applyPhysics(p, platforms, door) {
   if (p.eliminated) return;
 
   if (keys[p.controls.left]) p.vx = -speed;
@@ -108,6 +107,8 @@ function applyPhysics(p, platforms) {
   p.y += p.vy;
 
   p.onGround = false;
+
+  // Platform collisions
   for (let plat of platforms) {
     if (checkCollision(p, plat)) {
       if (p.vy > 0 && p.y + p.height - p.vy <= plat.y) {
@@ -118,6 +119,19 @@ function applyPhysics(p, platforms) {
     }
   }
 
+  // Door collision blocking if locked
+  if (door.locked &&
+      p.x < door.x + door.width &&
+      p.x + p.width > door.x &&
+      p.y < door.y + door.height &&
+      p.y + p.height > door.y) {
+    // Block horizontal movement through door
+    if (p.vx > 0) p.x = door.x - p.width;
+    else if (p.vx < 0) p.x = door.x + door.width;
+    p.vx = 0;
+  }
+
+  // Death if fall off bottom
   if (p.y > canvas.height && !p.eliminated) {
     eliminatePlayer(p);
   }
@@ -139,8 +153,9 @@ function checkGameOver() {
 function update() {
   const lvl = levels[level];
   const plats = lvl.platforms;
+  const door = lvl.door;
 
-  [player1, player2].forEach(p => applyPhysics(p, plats));
+  [player1, player2].forEach(p => applyPhysics(p, plats, door));
 
   // Key collection
   [player1, player2].forEach(p => {
@@ -151,10 +166,10 @@ function update() {
     }
   });
 
-  // Unlock door
-  if (lvl.key.collected) lvl.door.locked = false;
+  // Unlock door if key collected
+  if (lvl.key.collected) door.locked = false;
 
-  // Neighbor AI follows closest non-eliminated player
+  // Neighbor AI targets closest non-eliminated player
   let target = null;
   if (!player1.eliminated) target = player1;
   else if (!player2.eliminated) target = player2;
@@ -170,7 +185,7 @@ function update() {
     }
   }
 
-  // Both players must reach the goal (finish line) to advance
+  // Both players must reach goal to advance
   if (!player1.eliminated && !player2.eliminated &&
       checkCollision(player1, lvl.goal) &&
       checkCollision(player2, lvl.goal)) {
@@ -196,20 +211,16 @@ function render() {
   const lvl = levels[level];
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw platforms, key, door, goal
   lvl.platforms.forEach(p => draw(p, "#333"));
   if (!lvl.key.collected) draw(lvl.key, "gold");
   draw(lvl.door, lvl.door.locked ? "brown" : "green");
   draw(lvl.goal, "white");
 
-  // Draw players (only if not eliminated)
   if (!player1.eliminated) draw(player1);
   if (!player2.eliminated) draw(player2);
 
-  // Draw neighbor
   draw(neighbor);
 
-  // HUD text
   ctx.fillStyle = "white";
   ctx.font = "16px Arial";
   ctx.fillText("Level " + (level + 1), 20, 30);
@@ -232,3 +243,4 @@ gameLoop();
 </script>
 </body>
 </html>
+
