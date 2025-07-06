@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Hello Neighbor - 2 Player</title>
+  <title>Hello Neighbor - 2 Player (One Life)</title>
   <style>
     body { margin: 0; overflow: hidden; background: #111; }
     canvas { display: block; margin: auto; background: #84b6f4; }
@@ -11,7 +11,6 @@
 <body>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
 <script>
-// Setup
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 const keys = {};
@@ -23,7 +22,6 @@ const jumpSound = new Audio("https://cdn.pixabay.com/audio/2021/08/04/audio_918b
 const keySound = new Audio("https://cdn.pixabay.com/audio/2022/03/15/audio_2d922da94d.mp3");
 const hitSound = new Audio("https://cdn.pixabay.com/audio/2022/03/10/audio_3f1d13dccc.mp3");
 
-// Player Constructor
 function createPlayer(x, y, color, controls) {
   return {
     x, y,
@@ -31,18 +29,15 @@ function createPlayer(x, y, color, controls) {
     color,
     vx: 0, vy: 0,
     onGround: false,
-    health: 3,
+    health: 1,
     hasKey: false,
+    eliminated: false,
     controls
   };
 }
 
-const player1 = createPlayer(100, 100, "orange", {
-  left: "a", right: "d", up: "w"
-});
-const player2 = createPlayer(140, 100, "lime", {
-  left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp"
-});
+const player1 = createPlayer(100, 500, "orange", { left: "a", right: "d", up: "w" });
+const player2 = createPlayer(140, 500, "lime", { left: "ArrowLeft", right: "ArrowRight", up: "ArrowUp" });
 
 const gravity = 0.8, friction = 0.8, speed = 4, jump = -14;
 
@@ -58,36 +53,32 @@ const levels = [
     ],
     key: { x: 620, y: 230, width: 20, height: 20, collected: false },
     door: { x: 760, y: 560, width: 30, height: 20, locked: true },
-    goal: { x: 780, y: 520, width: 20, height: 60 }
+    goal: { x: 380, y: 0, width: 40, height: 20 }
   },
-  {
-    platforms: [
-      { x: 0, y: 580, width: 800, height: 20 },
-      { x: 100, y: 480, width: 100, height: 20 },
-      { x: 250, y: 380, width: 100, height: 20 },
-      { x: 400, y: 280, width: 100, height: 20 },
-      { x: 550, y: 180, width: 100, height: 20 },
-      { x: 700, y: 100, width: 100, height: 20 },
-    ],
-    key: { x: 720, y: 70, width: 20, height: 20, collected: false },
-    door: { x: 760, y: 560, width: 30, height: 20, locked: true },
-    goal: { x: 780, y: 520, width: 20, height: 60 }
-  }
 ];
 
 const neighbor = { x: 700, y: 500, width: 40, height: 40, color: "red", speed: 1.2 };
 
 function draw(obj, color) {
-  ctx.fillStyle = color || obj.color || "white";
+  ctx.fillStyle = color || obj.color;
   ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
 }
 
+function checkCollision(a, b) {
+  return a.x < b.x + b.width &&
+         a.x + a.width > b.x &&
+         a.y < b.y + b.height &&
+         a.y + a.height > b.y;
+}
+
 function applyPhysics(p, platforms) {
+  if (p.eliminated) return;
+
   if (keys[p.controls.left]) p.vx = -speed;
   else if (keys[p.controls.right]) p.vx = speed;
   else p.vx *= friction;
 
-  if ((keys[p.controls.up]) && p.onGround) {
+  if (keys[p.controls.up] && p.onGround) {
     p.vy = jump;
     p.onGround = false;
     jumpSound.play();
@@ -99,10 +90,7 @@ function applyPhysics(p, platforms) {
 
   p.onGround = false;
   for (let plat of platforms) {
-    if (p.x < plat.x + plat.width &&
-        p.x + p.width > plat.x &&
-        p.y < plat.y + plat.height &&
-        p.y + p.height > plat.y) {
+    if (checkCollision(p, plat)) {
       if (p.vy > 0 && p.y + p.height - p.vy <= plat.y) {
         p.y = plat.y - p.height;
         p.vy = 0;
@@ -111,19 +99,15 @@ function applyPhysics(p, platforms) {
     }
   }
 
-  // Death reset
-  if (p.y > canvas.height) {
-    p.x = 100; p.y = 100; p.vx = p.vy = 0;
-    p.health -= 1;
-    hitSound.play();
+  if (p.y > canvas.height && !p.eliminated) {
+    eliminatePlayer(p);
   }
 }
 
-function checkCollision(a, b) {
-  return a.x < b.x + b.width &&
-         a.x + a.width > b.x &&
-         a.y < b.y + b.height &&
-         a.y + a.height > b.y;
+function eliminatePlayer(p) {
+  p.health = 0;
+  p.eliminated = true;
+  hitSound.play();
 }
 
 function update() {
@@ -132,7 +116,7 @@ function update() {
 
   [player1, player2].forEach(p => applyPhysics(p, plats));
 
-  // Key collect
+  // Key collection
   [player1, player2].forEach(p => {
     if (!lvl.key.collected && checkCollision(p, lvl.key)) {
       lvl.key.collected = true;
@@ -144,52 +128,60 @@ function update() {
   // Unlock door
   if (lvl.key.collected) lvl.door.locked = false;
 
-  // Check goal
-  if (checkCollision(player1, lvl.goal) && checkCollision(player2, lvl.goal)) {
-    level = (level + 1) % levels.length;
-    resetLevel();
+  // Neighbor AI follows closest non-eliminated player
+  let target = player1;
+  if (player1.eliminated && !player2.eliminated) target = player2;
+  if (player2.eliminated && !player1.eliminated) target = player1;
+
+  if (!target.eliminated) {
+    if (neighbor.x < target.x) neighbor.x += neighbor.speed;
+    if (neighbor.x > target.x) neighbor.x -= neighbor.speed;
+    if (neighbor.y < target.y) neighbor.y += neighbor.speed;
+    if (neighbor.y > target.y) neighbor.y -= neighbor.speed;
+
+    if (checkCollision(neighbor, target)) {
+      eliminatePlayer(target);
+    }
   }
 
-  // Neighbor chase player1
-  const target = player1;
-  if (neighbor.x < target.x) neighbor.x += neighbor.speed;
-  if (neighbor.x > target.x) neighbor.x -= neighbor.speed;
-  if (neighbor.y < target.y) neighbor.y += neighbor.speed;
-  if (neighbor.y > target.y) neighbor.y -= neighbor.speed;
-
-  if (checkCollision(neighbor, player1)) {
-    player1.health -= 1;
-    hitSound.play();
-    player1.x = 100; player1.y = 100;
+  // Both players must reach the goal (at the top) to win
+  if (checkCollision(player1, lvl.goal) && checkCollision(player2, lvl.goal) && !player1.eliminated && !player2.eliminated) {
+    level = (level + 1) % levels.length;
+    resetLevel();
   }
 }
 
 function resetLevel() {
-  player1.x = 100; player1.y = 100; player1.hasKey = false;
-  player2.x = 140; player2.y = 100; player2.hasKey = false;
-  levels[level].key.collected = false;
-  levels[level].door.locked = true;
+  player1.x = 100; player1.y = 500; player1.vx = 0; player1.vy = 0;
+  player2.x = 140; player2.y = 500; player2.vx = 0; player2.vy = 0;
+  player1.hasKey = false; player2.hasKey = false;
+  player1.eliminated = false; player2.eliminated = false;
+  player1.health = 1; player2.health = 1;
+  const lvl = levels[level];
+  lvl.key.collected = false;
+  lvl.door.locked = true;
+  neighbor.x = 700; neighbor.y = 500;
 }
 
 function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
   const lvl = levels[level];
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Draw
   lvl.platforms.forEach(p => draw(p, "#333"));
   if (!lvl.key.collected) draw(lvl.key, "gold");
   draw(lvl.door, lvl.door.locked ? "brown" : "green");
   draw(lvl.goal, "white");
 
-  draw(player1);
-  draw(player2);
+  if (!player1.eliminated) draw(player1);
+  if (!player2.eliminated) draw(player2);
   draw(neighbor);
 
   ctx.fillStyle = "white";
-  ctx.font = "18px Arial";
-  ctx.fillText(`Level ${level + 1}`, 20, 30);
-  ctx.fillText(`P1 Health: ${player1.health}`, 20, 60);
-  ctx.fillText(`P2 Health: ${player2.health}`, 20, 80);
+  ctx.font = "16px Arial";
+  ctx.fillText("Level " + (level + 1), 20, 30);
+
+  if (player1.eliminated) ctx.fillText("Player 1 Eliminated", 600, 30);
+  if (player2.eliminated) ctx.fillText("Player 2 Eliminated", 600, 50);
 }
 
 function gameLoop() {
@@ -197,6 +189,7 @@ function gameLoop() {
   render();
   requestAnimationFrame(gameLoop);
 }
+
 gameLoop();
 </script>
 </body>
