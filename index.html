@@ -2,10 +2,10 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Simple Platformer</title>
+  <title>Hello Neighbor</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #222; }
-    canvas { display: block; margin: auto; background: #5a9bd4; }
+    body { margin: 0; overflow: hidden; background: #111; }
+    canvas { display: block; margin: auto; background: #84b6f4; }
   </style>
 </head>
 <body>
@@ -19,13 +19,10 @@ document.addEventListener("keydown", (e) => keys[e.key] = true);
 document.addEventListener("keyup", (e) => keys[e.key] = false);
 
 const player = {
-  x: 100,
-  y: 100,
-  width: 40,
-  height: 40,
-  color: "yellow",
-  vx: 0,
-  vy: 0,
+  x: 100, y: 100,
+  width: 40, height: 40,
+  color: "orange",
+  vx: 0, vy: 0,
   onGround: false
 };
 
@@ -36,9 +33,10 @@ const jumpForce = -14;
 
 const platforms = [
   { x: 0, y: 580, width: 800, height: 20 },
-  { x: 200, y: 500, width: 120, height: 20 },
-  { x: 400, y: 400, width: 120, height: 20 },
-  { x: 600, y: 300, width: 120, height: 20 },
+  { x: 150, y: 500, width: 120, height: 20 },
+  { x: 300, y: 420, width: 120, height: 20 },
+  { x: 450, y: 340, width: 120, height: 20 },
+  { x: 600, y: 260, width: 120, height: 20 },
 ];
 
 function drawRect(obj) {
@@ -47,36 +45,28 @@ function drawRect(obj) {
 }
 
 function update() {
-  // Horizontal movement
-  if (keys["ArrowLeft"] || keys["a"]) {
-    player.vx = -moveSpeed;
-  } else if (keys["ArrowRight"] || keys["d"]) {
-    player.vx = moveSpeed;
-  } else {
-    player.vx *= friction;
-  }
+  // Controls
+  if (keys["ArrowLeft"] || keys["a"]) player.vx = -moveSpeed;
+  else if (keys["ArrowRight"] || keys["d"]) player.vx = moveSpeed;
+  else player.vx *= friction;
 
-  // Jump
   if ((keys["ArrowUp"] || keys["w"] || keys[" "]) && player.onGround) {
     player.vy = jumpForce;
     player.onGround = false;
   }
 
-  // Apply gravity
+  // Gravity
   player.vy += gravity;
-
-  // Move player
   player.x += player.vx;
   player.y += player.vy;
 
-  // Collision
+  // Platform collision
   player.onGround = false;
   for (let p of platforms) {
     if (player.x < p.x + p.width &&
         player.x + player.width > p.x &&
         player.y < p.y + p.height &&
         player.y + player.height > p.y) {
-      // Top of platform
       if (player.vy > 0 && player.y + player.height - player.vy <= p.y) {
         player.y = p.y - player.height;
         player.vy = 0;
@@ -85,7 +75,7 @@ function update() {
     }
   }
 
-  // Boundaries
+  // Fall reset
   if (player.y > canvas.height) {
     player.x = 100;
     player.y = 100;
@@ -99,8 +89,13 @@ function render() {
   drawRect({ ...player });
 
   for (let p of platforms) {
-    drawRect({ ...p, color: "black" });
+    drawRect({ ...p, color: "#333" });
   }
+
+  // Text
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("Hello Neighbor Platformer", 20, 30);
 }
 
 function gameLoop() {
